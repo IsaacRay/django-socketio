@@ -71,18 +71,25 @@ Now lets look at the template. In the template you need to include the socketio 
 .. code-block:: html
 
   <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
-  Next, you need to connect to your socket:
-  <script>
-  var socket = io.connect("/echo");
-  </script>
-  Lastly, lets register an echo listener:
-  <script> 
-  socket.on("echo", echo);
 
-  function echo(data){
-  alert(data);
-  }
+Next, you need to connect to your socket:
+.. code-block:: html
+ 
+  <script>
+    var socket = io.connect("/echo");
   </script>
+
+Lastly, lets register an echo listener:
+.. code-block:: html
+
+  <script> 
+    socket.on("echo", echo);
+
+    function echo(data){
+      alert(data);
+    }
+  </script>
+
         
 So whats going on here? Well, io.connect() basically creates a direct tunnel to your events.py file on your server. It finds the Namespace based on what you give it, and then connects directly to a Namespace object it creates upon connection. Important Note: "/echo" is NOT a URL. This is just the way that namespace notation is written. Do not get confused by this. When you do socket.on("echo", echo);, you are saying, when you recieve a message from the server with an event type of "echo", call my echo function in the javascript. Our echo function is just going to spit out the message from the server.
 The last step is actually turning on your SocketIO server. Django-socketio comes with a built in management command to do that for you:
