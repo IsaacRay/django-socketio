@@ -7,17 +7,16 @@ To begin, I'm going to assume you already have a Django server environment set u
 
 The first thing you want to do to get django-socketio up and running is install git:
 
- sudo apt-get install git
-This will allow you to clone the repository. Important Note: The version of django-socketio available from pip is outdated and does not work. You need to clone a fork of it which has been updated to use a more current and functional version of gevent. Before you clone the repo though, you need libevent installed.
-sudo apt-get install libevent-dev
-Now lets clone the repo. If you have pip installed inside your virtualenv, activate the virtualenv first.
+sudo apt-get install git
+This will allow you to clone the repository. If you have pip installed inside your virtualenv, activate the virtualenv first.
 
 pip install -e git+git://github.com/Solution4Future/django-socketio.git#egg=django-socketio
+
 Now you have django-socketio installed. Next, you have to set up nginx to proxy to your SocketIO server, which by default runs on port 9000. This is my nginx config to make this work:
     
           server {
               listen 80;
-                  server_name stroopic.com;
+                  server_name example.com;
 
                   access_log off;
 
@@ -83,7 +82,9 @@ So whats going on here? Well, io.connect() basically creates a direct tunnel to 
 The last step is actually turning on your SocketIO server. Django-socketio comes with a built in management command to do that for you:
 
 python manage.py runserver_socketio
+
 By default this will set the server running on port 9000, where we've already told nginx to forward our websocket requests. I suggest setting this up to run automatically using Supervisor or some other process manager.
+
 So what can we do with all this? Well, once you've got everything in place, you can navigate to your template, and pull up a developer console in your browser. Type socket.emit("echo", "hello world"); If you've done everything right, you should see an alert box with "Hello World" appear. Why is this useful? Because what happened here is you told your socket, which is connected to your events.py, to emit an "echo" event to the server. The server picks up that event and triggers the on_echo function on the Namespace instance. on_echo takes the data sent along with the event (the string "Hello World") and broadcasts it out to all the sockets that are currently connected to the namespace. Note that I said "all the sockets that are currently connected". This is where it gets cool. Go to another device, either your phone or another computer, and pull up your template. No go back to the original device, and execute the emit command again. You should see a "Hello World" alert pop up on BOTH browsers.
 
 Thats the basics of implementing Websockets on Django. For more information, you can check out the docs on gevent-socketio on which django-socketio is based. It will give you a little more information on Namespaces, and Mixins you can use to enhance your project. Happy Hacking!
