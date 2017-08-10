@@ -6,13 +6,16 @@ Implementing Django-Socketio
 To begin, I'm going to assume you already have a Django server environment set up. If you don't, you can follow these instructions `here <http://aliteralmind.wordpress.com/2014/08/07/doingthedeepdowndiggitydivewithdjangoanddigitalocean>`_ , which I've found to be generally pretty good. It should be noted that these instructions assume you are using a DigitalOcean droplet, but an AWS instance running Ubuntu 14.04 will work just as well
 
 The first thing you want to do to get django-socketio up and running is install git:
+::
 
-sudo apt-get install git
-This will allow you to clone the repository. If you have pip installed inside your virtualenv, activate the virtualenv first.
+  sudo apt-get install git
 
-pip install -e git+git://github.com/Solution4Future/django-socketio.git#egg=django-socketio
+This will allow you to clone the repository. If you have pip installed inside your virtualenv, activate the virtualenv first.::
+
+  pip install -e git+git://github.com/Solution4Future/django-socketio.git#egg=django-socketio
 
 Now you have django-socketio installed. Next, you have to set up nginx to proxy to your SocketIO server, which by default runs on port 9000. This is my nginx config to make this work:
+::
     
           server {
               listen 80;
@@ -41,6 +44,7 @@ Now you have django-socketio installed. Next, you have to set up nginx to proxy 
           
 The key part here is the location block catching requests for /socket.io/. This block takes care of everything you need to have your sockets proxied to the SocketIO server.
 Once you have this set up, the next parts are pretty easy. You need to make an events.py in your Django app. Here is an example of mine:
+::
 
           from socketio.namespace import BaseNamespace
           from django_socketio.events import Namespace
@@ -64,22 +68,25 @@ Once you have this set up, the next parts are pretty easy. You need to make an e
 This is a very basic events.py, but the crucial things are here. We have a namespace decorator, which registers the namespace "/echo" with the SocketIO server. We have an on_echo function, which will get called when the socket triggers an "echo" event, which we'll get to in a moment. And we have a recv_disconnect, which gets called when the socket disconnects. There is also an intialize function which you can use to set things up when the socket first connects. I typically haven't used it, but I've included it for reference.
 Now lets look at the template. In the template you need to include the socketio JS. You can do that like this:
 
-<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
-Next, you need to connect to your socket:
- <script>
-var socket = io.connect("/echo");
-</script>
-Lastly, lets register an echo listener:
-<script> 
-socket.on("echo", echo);
+.. code-block:: html
 
-function echo(data){
-alert(data);
-}
-</script>
+  <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
+  Next, you need to connect to your socket:
+  <script>
+  var socket = io.connect("/echo");
+  </script>
+  Lastly, lets register an echo listener:
+  <script> 
+  socket.on("echo", echo);
+
+  function echo(data){
+  alert(data);
+  }
+  </script>
         
 So whats going on here? Well, io.connect() basically creates a direct tunnel to your events.py file on your server. It finds the Namespace based on what you give it, and then connects directly to a Namespace object it creates upon connection. Important Note: "/echo" is NOT a URL. This is just the way that namespace notation is written. Do not get confused by this. When you do socket.on("echo", echo);, you are saying, when you recieve a message from the server with an event type of "echo", call my echo function in the javascript. Our echo function is just going to spit out the message from the server.
 The last step is actually turning on your SocketIO server. Django-socketio comes with a built in management command to do that for you:
+::
 
 python manage.py runserver_socketio
 
