@@ -12,7 +12,7 @@ The first thing you want to do to get django-socketio up and running is install 
 
 This will allow you to clone the repository. If you have pip installed inside your virtualenv, activate the virtualenv first.::
 
-  pip install -e git+git://github.com/Solution4Future/django-socketio.git#egg=django-socketio
+  pip install -e git+git://github.com/IsaacRay/django-socketio.git#egg=django-socketio
 
 Now you have django-socketio installed. Next, you have to set up nginx to proxy to your SocketIO server, which by default runs on port 9000. This is my nginx config to make this work:
 ::
