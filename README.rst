@@ -73,6 +73,7 @@ Now lets look at the template. In the template you need to include the socketio 
   <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
 
 Next, you need to connect to your socket:
+
 .. code-block:: html
  
   <script>
@@ -80,6 +81,7 @@ Next, you need to connect to your socket:
   </script>
 
 Lastly, lets register an echo listener:
+
 .. code-block:: html
 
   <script> 
