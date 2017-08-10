@@ -88,7 +88,7 @@ So whats going on here? Well, io.connect() basically creates a direct tunnel to 
 The last step is actually turning on your SocketIO server. Django-socketio comes with a built in management command to do that for you:
 ::
 
-python manage.py runserver_socketio
+  python manage.py runserver_socketio
 
 By default this will set the server running on port 9000, where we've already told nginx to forward our websocket requests. I suggest setting this up to run automatically using Supervisor or some other process manager.
 
