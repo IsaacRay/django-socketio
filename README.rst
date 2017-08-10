@@ -1,349 +1,111 @@
-.. image:: https://secure.travis-ci.org/stephenmcd/django-socketio.png?branch=master
-   :target: http://travis-ci.org/#!/stephenmcd/django-socketio
 
-Created by `Stephen McDonald <http://twitter.com/stephen_mcd>`_
+Implementing Django-Socketio
+============================
 
-State of django-socketio
-========================
 
-django-socketio is currently bound to socket.io 0.6, which is considerably
-out of date. It's fully functional, but some browsers now have newer
-implentations of WebSockets, and so alternative socket.io transports are
-fallen back to in these cases.
+To begin, I'm going to assume you already have a Django server environment set up. If you don't, you can follow these instructions here, which I've found to be generally pretty good: Setting up a Django server. It should be noted that these instructions assume you are using a DigitalOcean droplet, but an AWS instance running Ubuntu 14.04 will work just as well
 
-Work is currently underway to bring django-socketio up to date with the
-latest gevent-socktio, which has just recently started to support
-socket.io 0.8
+The first thing you want to do to get django-socketio up and running is install git:
 
-Follow this thread for more info:
+ sudo apt-get install git
+This will allow you to clone the repository. Important Note: The version of django-socketio available from pip is outdated and does not work. You need to clone a fork of it which has been updated to use a more current and functional version of gevent. Before you clone the repo though, you need libevent installed.
+sudo apt-get install libevent-dev
+Now lets clone the repo. If you have pip installed inside your virtualenv, activate the virtualenv first.
 
-https://github.com/stephenmcd/django-socketio/issues/19
+pip install -e git+git://github.com/Solution4Future/django-socketio.git#egg=django-socketio
+Now you have django-socketio installed. Next, you have to set up nginx to proxy to your SocketIO server, which by default runs on port 9000. This is my nginx config to make this work:
+    
+          server {
+              listen 80;
+                  server_name stroopic.com;
 
-Introduction
-============
+                  access_log off;
 
-django-socketio is a `BSD licensed`_ `Django`_ application that
-brings together a variety of features that allow you to use
-`WebSockets`_ seamlessly with any Django project.
+                  location /static/ {
+                      alias /opt/myenv/static/;
+                  }
 
-django-socketio was inspired by `Cody Soyland`_'s introductory
-`blog post`_ on using `Socket.IO`_ and `gevent`_ with Django, and
-made possible by the work of `Jeffrey Gelens'`_ `gevent-websocket`_
-and `gevent-socketio`_ packages.
+                  location / {
+                      proxy_pass http://127.0.0.1:8001;
+                      proxy_set_header X-Forwarded-Host $server_name;
+                      proxy_set_header X-Real-IP $remote_addr;
+                      add_header P3P 'CP="ALL DSP COR PSAa PSDa OUR NOR ONL UNI COM NAV"';
+                  }
+                  location /socket.io/ {
+                      proxy_pass http://127.0.0.1:9000;
+                      proxy_set_header Upgrade $http_upgrade;
+                      proxy_set_header Connection "upgrade";
+                      proxy_http_version 1.1;
 
-The features provided by django-socketio are:
+                  }
+              }
+          
+The key part here is the location block catching requests for /socket.io/. This block takes care of everything you need to have your sockets proxied to the SocketIO server.
+Once you have this set up, the next parts are pretty easy. You need to make an events.py in your Django app. Here is an example of mine:
 
-  * Installation of required packages from `PyPI`_
-  * A management command for running gevent's pywsgi server with
-    auto-reloading capabilities
-  * A channel subscription and broadcast system that extends
-    Socket.IO allowing WebSockets and events to be partitioned into
-    separate concerns
-  * A `signals`_-like event system that abstracts away the various
-    stages of a Socket.IO request
-  * Support for out-of-band (non-event) broadcasts
-  * The required views, urlpatterns, templatetags and tests for all
-    the above
+          from socketio.namespace import BaseNamespace
+          from django_socketio.events import Namespace
+          from socketio.mixins import BroadcastMixin
 
-Upgrading
-=========
+          @Namespace('/echo')
+          class EchoNamespace(BaseNamespace, BroadcastMixin):
+              nicknames = []
 
-Prior to version 0.3, the message argument sent to each of the event
-handlers was always a Python list, regardless of the data type that
-was used for sending data. As of 0.3, the message argument matches the
-data type being sent via JavaScript.
+              def initialize(self):
+                  pass
+              
+              def on_echo(self, echo):
+                  self.broadcast_event('echo', echo)
 
-Installation
-============
+              def recv_disconnect(self):
+                  self.log('Disconnected')
+                  self.disconnect(silent=True)
+                  return True
+        
+This is a very basic events.py, but the crucial things are here. We have a namespace decorator, which registers the namespace "/echo" with the SocketIO server. We have an on_echo function, which will get called when the socket triggers an "echo" event, which we'll get to in a moment. And we have a recv_disconnect, which gets called when the socket disconnects. There is also an intialize function which you can use to set things up when the socket first connects. I typically haven't used it, but I've included it for reference.
+Now lets look at the template. In the template you need to include the socketio JS. You can do that like this:
 
-Note that if you've never installed gevent, you'll first need to
-install the libevent development library. You may also need the Python
-development library if not installed. This can be achieved on Debian
-based sytems with the following commands::
+<script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/socket.io/0.9.16/socket.io.min.js"></script>
+Next, you need to connect to your socket:
+ <script>
+var socket = io.connect("/echo");
+</script>
+Lastly, lets register an echo listener:
+<script> 
+socket.on("echo", echo);
 
-    $ sudo apt-get install python-dev
-    $ sudo apt-get install libevent-dev
+function echo(data){
+alert(data);
+}
+</script>
+        
+So whats going on here? Well, io.connect() basically creates a direct tunnel to your events.py file on your server. It finds the Namespace based on what you give it, and then connects directly to a Namespace object it creates upon connection. Important Note: "/echo" is NOT a URL. This is just the way that namespace notation is written. Do not get confused by this. When you do socket.on("echo", echo);, you are saying, when you recieve a message from the server with an event type of "echo", call my echo function in the javascript. Our echo function is just going to spit out the message from the server.
+The last step is actually turning on your SocketIO server. Django-socketio comes with a built in management command to do that for you:
 
-or on OSX using `Homebrew`_ (with Xcode installed)::
+python manage.py runserver_socketio
+By default this will set the server running on port 9000, where we've already told nginx to forward our websocket requests. I suggest setting this up to run automatically using Supervisor or some other process manager.
+So what can we do with all this? Well, once you've got everything in place, you can navigate to your template, and pull up a developer console in your browser. Type socket.emit("echo", "hello world"); If you've done everything right, you should see an alert box with "Hello World" appear. Why is this useful? Because what happened here is you told your socket, which is connected to your events.py, to emit an "echo" event to the server. The server picks up that event and triggers the on_echo function on the Namespace instance. on_echo takes the data sent along with the event (the string "Hello World") and broadcasts it out to all the sockets that are currently connected to the namespace. Note that I said "all the sockets that are currently connected". This is where it gets cool. Go to another device, either your phone or another computer, and pull up your template. No go back to the original device, and execute the emit command again. You should see a "Hello World" alert pop up on BOTH browsers.
 
-    $ brew install libevent
-    $ export CFLAGS=-I/brew/include
+Thats the basics of implementing Websockets on Django. For more information, you can check out the docs on gevent-socketio on which django-socketio is based. It will give you a little more information on Namespaces, and Mixins you can use to enhance your project. Happy Hacking!
 
-or on OSX using `macports`::
 
-    $ sudo port install libevent
-    $ CFLAGS="-I /opt/local/include -L /opt/local/lib" pip install django-socketio
 
-The easiest way to install django-socketio is directly from PyPi using
-`pip`_ by running the following command, which will also attempt to
-install the dependencies mentioned above::
 
-    $ pip install -U django-socketio
 
-Otherwise you can download django-socketio and install it directly
-from source::
 
-    $ python setup.py install
 
-Once installed you can then add ``django_socketio`` to your
-``INSTALLED_APPS`` and ``django_socketio.urls`` to your url conf::
 
-    urlpatterns = patterns('',
-        url("", include('django_socketio.urls')),
-    )
 
-The client-side JavaScripts for Socket.IO and its extensions can then
-be added to any page with the ``socketio`` templatetag::
 
-    <head>
-        {% load socketio_tags %}
-        {% socketio %}
-        <script>
-            var socket = new io.Socket();
-            socket.connect();
-            // etc
-        </script>
-    </head>
-
-Running
-=======
-
-The ``runserver_socketio`` management command is provided which will
-run gevent's pywsgi server which is required for supporting the type of
-long-running request a WebSocket will use::
-
-    $ python manage.py runserver_socketio host:port
-
-Note that the host and port can also configured by defining the following
-settings in your project's settings module:
-
-    * ``SOCKETIO_HOST`` - The host to bind the server to.
-    * ``SOCKETIO_PORT`` - The numeric port to bind the server to.
-
-These settings are only used when their values are not specified as
-arguments to the ``runserver_socketio`` command, which always takes
-precedence.
-
-.. note::
-
-    On UNIX-like systems, in order for the ``flashsocket`` transport
-    fallback to work, root privileges (eg by running the above command
-    with ``sudo``) are required when running the server. This is due to
-    the `Flash Policy Server`_ requiring access to a `low port`_ (843).
-    This isn't strictly required for everything to work correctly, as
-    the ``flashsocket`` transport is only used as one of several
-    fallbacks when WebSockets aren't supported by the browser.
-
-When running the ``runserver_socketio`` command in production, you'll
-most likely want to use some form of process manager, like
-`Supervisor`_ or any of the other alternatives.
-
-Channels
-========
-
-The WebSocket implemented by gevent-websocket provides two methods for
-sending data to other clients, ``socket.send`` which sends data to the
-given socket instance, and ``socket.broadcast`` which sends data to all
-socket instances other than itself.
-
-A common requirement for WebSocket based applications is to divide
-communications up into separate channels. For example a chat site may
-have multiple chat rooms and rather than using ``broadcast`` which
-would send a chat message to all chat rooms, each room would need a
-reference to each of the connected sockets so that ``send`` can be
-called on each socket when a new message arrives for that room.
-
-django-socketio extends Socket.IO both on the client and server to
-provide channels that can be subscribed and broadcast to.
-
-To subscribe to a channel client-side in JavaScript use the
-``socket.subscribe`` method::
-
-    var socket = new io.Socket();
-    socket.connect();
-    socket.on('connect', function() {
-        socket.subscribe('my channel');
-    });
-
-Once the socket is subscribed to a channel, you can then
-broadcast to the channel server-side in Python using the
-``socket.broadcast_channel`` method::
-
-  socket.broadcast_channel("my message")
-
-Broadcast and Send Methods
-==========================
-
-Each server-side socket instance contains a handful of methods
-for sending data. As mentioned above, the first two methods are
-implemented by `gevent-socketio`_:
-
-  * ``socket.send(message)`` - Sends the given message directly to
-    the socket.
-  * ``socket.broadcast(message)`` - Sends the given message to all
-    other sockets.
-
-The remaning methods are implemented by django-socketio.
-
-  * ``socket.broadcast_channel(message, channel=None)`` - Sends the
-    given message to all other sockets that are subscribed to the
-    given channel. If no channel is given, all channels that the
-    socket is subscribed to are used.
-    the socket.
-  * ``socket.send_and_broadcast(message)`` - Shortcut that sends the
-    message to all sockets, including the sender.
-  * ``socket.send_and_broadcast_channel(message, channel=None)``
-    - Shortcut that sends the message to all sockets for the given
-    channel, including the sender.
-
-The following methods can be imported directly from
-``django_socketio`` for broadcasting and sending out-of-band (eg: not
-in response to a socket event). These methods map directly to the same
-methods on a socket instance, and in each case an appropriate connected
-socket will be chosen to use for sending the message, and the
-``django_socketio.NoSocket`` exception will be raised if no connected
-sockets exist.
-
-  * ``django_socketio.broadcast(message)``
-  * ``django_socketio.broadcast_channel(message, channel)``
-  * ``django_socketio.send(session_id, message)``
-
-Note that with the ``send`` method, the socket is identified by its
-session ID, accessible via ``socket.session.session_id``. This is a
-WebSocket session ID and should not be confused with a Django session
-ID which is different.
-
-Events
-======
-
-The ``django_socketio.events`` module provides a handful of events
-that can be subscribed to, very much like connecting receiver
-functions to Django signals. Each of these events are raised
-throughout the relevant stages of a Socket.IO request. These events
-represent the main approach for implementing your socket handling
-logic when using django-socketio.
-
-Events are subscribed to by applying each event as a decorator
-to your event handler functions::
-
-    from django_socketio.events import on_message
-
-    @on_message
-    def my_message_handler(request, socket, context, message):
-        ...
-
-Where should these event handlers live in your Django project? They
-can go anywhere, so long as they're imported by Django at startup
-time. To ensure that your event handlers are always loaded, you can
-put them into a module called ``events.py`` in one of your apps listed
-in Django's ``INSTALLED_APPS`` setting. django-socketio looks for these
-modules, and will always import them to ensure your event handlers are
-loaded.
-
-Each event handler takes at least three arguments: the current Django
-``request``, the Socket.IO ``socket`` the event occurred for, and a
-``context``, which is simply a dictionary that can be used to persist
-variables across all events throughout the life-cycle of a single
-WebSocket connection.
-
-  * ``on_connect(request, socket, context)`` - occurs once when the
-    WebSocket connection is first established.
-  * ``on_message(request, socket, context, message)`` - occurs every
-    time data is sent to the WebSocket. Takes an extra ``message``
-    argument which contains the data sent.
-  * ``on_subscribe(request, socket, context, channel)`` - occurs when
-    a channel is subscribed to. Takes an extra ``channel`` argument
-    which contains the channel subscribed to.
-  * ``on_unsubscribe(request, socket, context, channel)`` - occurs
-    when a channel is unsubscribed from. Takes an extra ``channel``
-    argument which contains the channel unsubscribed from.
-  * ``on_error(request, socket, context, exception)`` - occurs when
-    an error is raised. Takes an extra ``exception`` argument which
-    contains the exception for the error.
-  * ``on_disconnect(request, socket, context)`` - occurs once when
-    the WebSocket disconnects.
-  * ``on_finish(request, socket, context)`` - occurs once when the
-    Socket.IO request is finished.
-
-Like Django signals, event handlers can be defined anywhere so long
-as they end up being imported. Consider adding them to their own
-module that gets imported by your urlconf, or even adding them to
-your views module since they're conceptually similar to views.
-
-Binding Events to Channels
-==========================
-
-All events other than the ``on_connect`` event can also be bound to
-particular channels by passing a ``channel`` argument to the event
-decorator. The channel argument can contain a regular expression
-pattern used to match again multiple channels of similar function.
-
-For example, suppose you implemented a chat site with multiple rooms.
-WebSockets would be the basis for users communicating within each
-chat room, however you may want to use them elsewhere throughout the
-site for different purposes, perhaps for a real-time admin dashboard.
-In this case there would be two distinct WebSocket uses, with the chat
-rooms each requiring their own individual channels.
-
-Suppose each chat room user subscribes to a channel client-side
-using the room's ID::
-
-    var socket = new io.Socket();
-    var roomID = 42;
-    socket.connect();
-    socket.on('connect', function() {
-        socket.subscribe('room-' + roomID);
-    });
-
-Then server-side the different message handlers are bound to each
-type of channel::
-
-    @on_message(channel="dashboard")
-    def my_dashboard_handler(request, socket, context, message):
-        ...
-
-    @on_message(channel="^room-")
-    def my_chat_handler(request, socket, context, message):
-        ...
-
-Logging
-=======
-
-The following setting can be used to configure logging:
-
-    * ``SOCKETIO_MESSAGE_LOG_FORMAT`` - A format string used for logging
-      each message sent via a socket. The string is formatted using
-      interpolation with a dictionary. The dictionary contains all the
-      keys found in Django's ``request["META"]``, as well as ``TIME``
-      and ``MESSAGE`` keys which contain the time of the message and
-      the message contents respectively. Set this setting to ``None``
-      to disable message logging.
-
-Chat Demo
-=========
-
-The "hello world" of WebSocket applications is naturally the chat
-room. As such django-socketio comes with a demo chat application
-that provides examples of the different events, channel and broadcasting
-features available. The demo can be found in the ``example_project``
-directory of the ``django_socketio`` package. Note that Django 1.3 or
-higher is required for the demo as it makes use of Django 1.3's
-``staticfiles`` app.
-
-.. _`BSD licensed`: http://www.linfo.org/bsdlicense.html
-.. _`Django`: http://djangoproject.com/
-.. _`WebSockets`: http://en.wikipedia.org/wiki/WebSockets
-.. _`Cody Soyland`: http://codysoyland.com/
-.. _`blog post`: http://codysoyland.com/2011/feb/6/evented-django-part-one-socketio-and-gevent/
-.. _`Socket.IO`: http://socket.io/
-.. _`Jeffrey Gelens'`: http://www.gelens.org/
-.. _`gevent`: http://www.gevent.org/
-.. _`gevent-websocket`: https://bitbucket.org/Jeffrey/gevent-websocket/
-.. _`gevent-socketio`: https://bitbucket.org/Jeffrey/gevent-socketio/
-.. _`PyPI`: http://pypi.python.org/
-.. _`signals`: https://docs.djangoproject.com/en/dev/topics/signals/
-.. _`Homebrew`: http://mxcl.github.com/homebrew/
-.. _`pip`: http://www.pip-installer.org/
-.. _`Supervisor`: http://supervisord.org/
-.. _`Flash Policy Server`: http://www.adobe.com/devnet/flashplayer/articles/socket_policy_files.html
-.. _`low port`: http://www.staldal.nu/tech/2007/10/31/why-can-only-root-listen-to-ports-below-1024/
+
+
+
+
+
+
+
+
+
+
+
+
