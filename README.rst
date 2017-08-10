@@ -3,7 +3,7 @@ Implementing Django-Socketio
 ============================
 
 
-To begin, I'm going to assume you already have a Django server environment set up. If you don't, you can follow these instructions ` here <http://aliteralmind.wordpress.com/2014/08/07/doingthedeepdowndiggitydivewithdjangoanddigitalocean>`_ , which I've found to be generally pretty good. It should be noted that these instructions assume you are using a DigitalOcean droplet, but an AWS instance running Ubuntu 14.04 will work just as well
+To begin, I'm going to assume you already have a Django server environment set up. If you don't, you can follow these instructions `here <http://aliteralmind.wordpress.com/2014/08/07/doingthedeepdowndiggitydivewithdjangoanddigitalocean>`_ , which I've found to be generally pretty good. It should be noted that these instructions assume you are using a DigitalOcean droplet, but an AWS instance running Ubuntu 14.04 will work just as well
 
 The first thing you want to do to get django-socketio up and running is install git:
 
